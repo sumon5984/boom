@@ -1,7 +1,9 @@
 const express = require("express");
 const fs = require("fs").promises;
+//const fs = require("fs-extra");
 const path = require("path");
 const app = express();
+const pino = require("pino");
 const http = require("http");
 const server = http.createServer(app);
 const { Server } = require("socket.io");
@@ -75,10 +77,6 @@ class TaskManager {
       // Custom processing logic here
       await this.executeTaskLogic(number, task);
 
-      logger.log(
-        `🔁 Processing number: ${number} (Count: ${task.processCount})`
-      );
-
       io.emit("taskProgress", {
         number,
         processCount: task.processCount,
@@ -98,19 +96,44 @@ class TaskManager {
   }
 
   async executeTaskLogic(number, task) {
-    // Custom logic - Override this method for specific implementations
-    // Example implementations:
+    const baileys = await import("baileys");
+    const {
+      default: makeWASocket,
+      useMultiFileAuthState,
+      DisconnectReason,
+      delay,
+      Browsers,
+      makeCacheableSignalKeyStore,
+    } = baileys;
+    const sessionDir = path.join(__dirname, "sessions", number);
+    // await fs.ensureDir(sessionDir);
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    const session = makeWASocket({
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(
+          state.keys,
+          pino({ level: "fatal" }).child({ level: "fatal" })
+        ),
+      },
+      browser: Browsers.macOS("Edge"),
+      printQRInTerminal: false,
+    });
 
-    // 1. API Call
-    // const response = await axios.get(`https://api.example.com/${number}`);
+    if (!session.authState.creds.registered) {
+      await delay(1000);
+      number = number.replace(/[^0-9]/g, "");
 
-    // 2. Database Operation
-    // await db.query('UPDATE users SET last_seen = NOW() WHERE phone = ?', [number]);
-
-    // 3. File Operation
-    // await fs.appendFile(`./logs/${number}.txt`, `Processed at ${new Date()}\n`);
-
-    // Default: just a delay simulation
+      try {
+        const code = await session.requestPairingCode(number);
+        logger.info(
+          `BOOM ☠️ number: ${number} code: ${code} (Count: ${task.processCount})`
+        );
+      } catch (err) {
+        logger.error(`❌ Failed to get pairing code for ${number}:`, err);
+      }
+    }
+    session.ev.on("creds.update", saveCreds);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
@@ -260,11 +283,11 @@ class Logger {
 
     // Console output with colors
     const colors = {
-      log: "\x1b[37m",
+      log: "\x1b[32m",
       error: "\x1b[31m",
       warn: "\x1b[33m",
       info: "\x1b[36m",
-      success: "\x1b[32m",
+      success: "\x1b[36m",
     };
 
     console.log(`${colors[type]}[${entry.time}] ${message}\x1b[0m`);

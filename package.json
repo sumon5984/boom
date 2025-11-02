@@ -9,9 +9,11 @@
   "author": "x-KIRA",
   "license": "MIT",
   "dependencies": {
+    "baileys": "^7.0.0-rc.6",
     "express": "^5.1.0",
     "fs": "^0.0.1-security",
     "path": "^0.12.7",
+    "pino": "^10.1.0",
     "socket.io": "^4.8.1"
   }
 }
